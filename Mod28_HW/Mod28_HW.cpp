@@ -4,7 +4,17 @@
 #include <future>
 #include <mutex>
 
+/*
+Сортировка данным методом не показала существенного прироста, при некоторых настройках показатели, 
+наоборот, ухудшались, несмотря на введенное ограничение потоков 
+MAX_THREAD атомарным счетчиком active_threads и проверки длины массива async_on_f
 
+Недостатки:
+    много накладных расходов на std::async;
+    рекурсия создает много мелких задач;
+    слияние — узкое место.
+
+*/ 
 
 using namespace std;
 
@@ -71,7 +81,7 @@ void merge(int* array, int leftIndex, int midIndex, int rightIndex) {
 void mergeSort(int* arr, int l, int r, bool async_on) {
     if (l < r) {
         int m = l + (r - l) / 2; // Находим середину
-        bool async_on_f = async_on && (r - l > 1000000);
+        bool async_on_f = async_on && (m - l > 1000000);
         
         
 
@@ -105,7 +115,7 @@ int main()
 
     setlocale(LC_ALL, "Russian");
 
-    const int size = 20000000;
+    const int size = 10000000;
     int* arr = new int[size];
     int* arr2 = new int[size];
 
