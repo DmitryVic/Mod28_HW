@@ -2,10 +2,16 @@
 #include <cstdlib>
 #include <ctime>
 #include <future>
+#include <mutex>
 
 
 
 using namespace std;
+
+// ограничение потоков
+const unsigned int MAX_THREAD = 2;
+// Атомарный счетчик потоков
+std::atomic<unsigned int> active_threads{ 0 };
 
 // Функция слияния двух отсортированных подмассивов
 void merge(int* array, int leftIndex, int midIndex, int rightIndex) {
@@ -62,12 +68,32 @@ void merge(int* array, int leftIndex, int midIndex, int rightIndex) {
 
 
 // Вызов: mergeSort(arr, 0, size-1);
-void mergeSort(int* arr, int l, int r) {
+void mergeSort(int* arr, int l, int r, bool async_on) {
     if (l < r) {
         int m = l + (r - l) / 2; // Находим середину
-        mergeSort(arr, l, m);    // Сортировка левой части
-        mergeSort(arr, m + 1, r);// Сортировка правой части
+        bool async_on_f = async_on && (r - l > 1000000);
+        
+        
+
+        if (async_on_f && active_threads.load() < MAX_THREAD)
+        {
+            active_threads++; // занимаем слот потока
+            future<void> f = async(launch::async, [arr, l, m, async_on]() {
+                mergeSort(arr, l, m, async_on); // Сортировка левой части в другом потоке
+                active_threads--;               // освобождаем слот потока после завершения
+                });
+
+            mergeSort(arr, m + 1, r, async_on);// Сортировка правой части
+            f.wait();
+        }
+        else
+        {
+            mergeSort(arr, l, m, async_on);    // Сортировка левой части
+            mergeSort(arr, m + 1, r, async_on);// Сортировка правой части
+        }
+
         merge(arr, l, m, r);     // Слияние двух частей
+
     }
 }
 
@@ -79,9 +105,10 @@ int main()
 
     setlocale(LC_ALL, "Russian");
 
-    const int size = 100000;
+    const int size = 20000000;
     int* arr = new int[size];
-	
+    int* arr2 = new int[size];
+
     cout << "Запуск... \n Запуск генерации " << size << " случайных значений..." << endl;
 
     srand(static_cast<unsigned int>(time(0)));  // Засеять рандомайзер
@@ -90,24 +117,39 @@ int main()
     {
         arr[i] = (rand() % 100000) + 1;             // Рандом от 1 до 100000
     }
+
+    cout << "Подготовка массива для 2 запуска алгоритма ..." << endl;
+    //копирование массива для проверки идентичной ситуации в одном и в нескольких потоках
+    for (size_t i = 0; i < size; i++)
+    {
+        arr2[i] = arr[i];
+    }
     
     cout << "Запуск алгоритма merge sort в однопоточном режиме" << endl;
 
     clock_t time_start = clock();
-    mergeSort(arr, 0, size - 1);
+    mergeSort(arr, 0, size - 1, false);
     clock_t time_end = clock();
 
     cout << "Алгоритм  merge sort завешил работу за " << double(time_end - time_start) / double(CLOCKS_PER_SEC) << " секунд" << endl;
     
-    int enter = 0;
-    for (size_t i = 0; i < size; i++)
+
+    cout << "\nЗапуск алгоритма merge sort в многопоточном режиме" << endl;
+
+    time_start = clock();
+    mergeSort(arr2, 0, size - 1, true);
+    time_end = clock();
+
+    cout << "Алгоритм  merge sort завешил работу за " << double(time_end - time_start) / double(CLOCKS_PER_SEC) << " секунд" << endl;
+
+
+    /*for (size_t i = 0; i < size; i += 10000)
     {
-        
-        cout << arr[i] << " ";
-        if (++enter % 10 == 0)
-            cout << "\n";
-    }
+        cout << "arr1[" << i << "] " << arr[i] << "\t\t\t";
+        cout << "arr2[" << i << "] " << arr2[i] << "\n";
+    }*/
 
     delete[] arr;
+    delete[] arr2;
 	return 0;
 }
